@@ -22,7 +22,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/patrickmn/go-cache"
 	"io"
 	"log"
 	"net"
@@ -30,6 +29,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
 
 // Config the plugin configuration.
@@ -90,7 +91,7 @@ func getCachedAI() (string, error) {
 		log.Printf("unable to fetch ai.robots.txt: %v", err)
 		return "", err
 	}
-	c.Set("aiContenxt", aiRobotsTxt, cache.DefaultExpiration)
+	c.Set("aiContent", aiRobotsTxt, cache.DefaultExpiration)
 	return aiRobotsTxt, nil
 }
 
@@ -160,7 +161,7 @@ func (p *RobotsTxtPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		if p.block {
 			for _, uaHeader := range req.Header.Values("User-Agent") {
 				agentMatch, err := GetRegex()
-				if err != nil {
+				if err == nil {
 					if agentMatch != nil && agentMatch.MatchString(uaHeader) {
 						BlockAgent(&rw)
 						return
