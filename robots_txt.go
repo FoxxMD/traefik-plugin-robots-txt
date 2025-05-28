@@ -22,11 +22,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/patrickmn/go-cache"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // Config the plugin configuration.
@@ -66,11 +69,45 @@ type RobotsTxtPlugin struct {
 	next         http.Handler
 }
 
+var (
+	c *cache.Cache
+)
+
+func getCachedAI() (string, error) {
+	foo, found := c.Get("aiContent")
+	if found {
+		return foo.(string), nil
+	}
+	aiRobotsTxt, err := fetchAiRobotsTxt()
+	if err != nil {
+		log.Printf("unable to fetch ai.robots.txt: %v", err)
+		return "", err
+	}
+	c.Set("aiContenxt", aiRobotsTxt, cache.DefaultExpiration)
+	return aiRobotsTxt, nil
+}
+
+func GetRegex() *regexp.Regexp {
+	foo, found := c.Get("reg")
+	if found {
+		return foo.(*regexp.Regexp)
+	}
+	// TODO
+	//aiResp := getCachedAI()
+	matcher, err := regexp.Compile("")
+	if err != nil {
+		log.Printf("unable to compile regex: %v", err)
+	}
+	return matcher
+}
+
 // New created a new Demo plugin.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	if len(config.CustomRules) == 0 && !config.AiRobotsTxt {
 		return nil, fmt.Errorf("set customRules or set aiRobotsTxt to true")
 	}
+
+	c = cache.New(5*time.Minute, 10*time.Minute)
 
 	return &RobotsTxtPlugin{
 		customRules:  config.CustomRules,
@@ -109,7 +146,7 @@ func (p *RobotsTxtPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		"https://plugins.traefik.io/plugins/681b2f3fba3486128fc34fae/robots-txt-plugin\n"
 
 	if p.aiRobotsTxt {
-		aiRobotsTxt, err := p.fetchAiRobotsTxt()
+		aiRobotsTxt, err := getCachedAI()
 		if err != nil {
 			log.Printf("unable to fetch ai.robots.txt: %v", err)
 		}
@@ -167,7 +204,7 @@ func (r *responseWriter) Flush() {
 	}
 }
 
-func (p *RobotsTxtPlugin) fetchAiRobotsTxt() (string, error) {
+func fetchAiRobotsTxt() (string, error) {
 	backendURL := "https://raw.githubusercontent.com/ai-robots-txt/ai.robots.txt/refs/heads/main/robots.txt"
 
 	resp, err := http.Get(backendURL)
